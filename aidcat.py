@@ -7,6 +7,7 @@ import json
 import requests
 import os
 import uuid
+import getpass
 from time import strftime
 from json_to_html import to_html
 
@@ -556,6 +557,39 @@ class User():
         self.get_adventures(True)
         self.get_posts(True)
 
+    def get_login_token(self):
+        loginpayload = {
+            "variables": {
+                "identifier": "",
+                "email": "",
+                "password": ""
+            },
+            "query": """
+        mutation ($identifier: String, $email: String, $password: String, $anonymousId: String) {
+            login(identifier: $identifier, email: $email, password: $password, anonymousId: $anonymousId) {
+                accessToken
+            }
+        }
+        """
+        }
+
+        loginpayload['variables']['identifier'] = loginpayload['variables']['email'] = input('Your username or e-mail: ')
+        loginpayload['variables']['password'] = getpass.getpass('Your password: ')
+        try:
+            payload = self.session.post(self.url, data=json.dumps(loginpayload)).json()
+            if 'errors' in payload:
+                print('Couldn\'t log in.')
+                for error in payload['errors']:
+                    print(error['message'])
+                    return ''
+            elif 'data' in payload:
+                return payload['data']['login']['accessToken']
+            else:
+                print('no data?!')
+        except requests.HTTPError as e:
+            print(e)
+            print(e.read())
+
 class Token():
     def __init__(self, user):
         self.user = user
@@ -588,11 +622,13 @@ class Token():
             # Loop until a valid token is given
             clear_screen()
             if can_exit:
-                token = input('Please enter your access token (UUID), or press Enter to go back: ')
+                print('Please enter your credentials, or press Enter to go back: ')
+                token = self.user.get_login_token()
                 if not token.strip():
                     return None
             else:
-                token = input('Please enter your access token (UUID): ').strip()
+                print('Please enter your credentials: ')
+                token = self.user.get_login_token()
             try:
                 token = self.validate(token)
                 print(f'\nToken loaded for account {self.username(token)}.')
@@ -616,7 +652,6 @@ class Token():
 
     # Retrieves the account username associated with a token. Returns None for an invalid token.
     def username(self, token):
-
         result = self.user.make_query({'query': '{user {username}}'}, token)
         if result['data']['user']:
             return result['data']['user']['username']
